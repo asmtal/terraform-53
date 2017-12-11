@@ -1,0 +1,343 @@
+# AWS PROVIDERS
+# Default provider (used if provider not specified in resource definition)
+provider "aws" {
+  access_key = ""
+  secret_key = ""
+  region = "us-east-1"
+}
+
+#"JobFlowId": {"Ref": "EMRCY325"},
+
+#"IamInstanceProfile": "EMR_EC2_DefaultRole",
+
+# EMR definition by cloudformation stack
+resource "aws_cloudformation_stack" "tfEMR" {
+  name = "tfemrrr"
+  # DO_NOTHING, ROLLBACK, or DELETE
+#  on_failure = "DO_NOTHING"
+  disable_rollback = "true"
+  tags    = { Name= "tfEMRsmall" }
+  timeout_in_minutes = "120"
+  template_body = <<STACK
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Metadata": {
+    "AWS::CloudFormation::Designer": {
+      "id-waithandle": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 160,
+          "y": 180
+        },
+        "z": 0,
+        "embeds": []
+      },
+      "id-cluster": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 280,
+          "y": 180
+        },
+        "z": 0,
+        "embeds": [
+          "id-DistCPS32Dest"
+        ],
+        "dependson": [
+          "id-waithandle"
+        ]
+      },
+      "id-ExportDataOnSource": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 470,
+          "y": 180
+        },
+        "z": 0,
+        "embeds": [],
+        "dependson": [
+          "id-cluster"
+        ]
+      },
+      "id-DistCPSource2S3": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 650,
+          "y": 180
+        },
+        "z": 0,
+        "embeds": [],
+        "dependson": [
+          "id-ExportDataOnSource"
+        ]
+      },
+      "id-WaitCondition": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 730,
+          "y": 80
+        },
+        "z": 0,
+        "dependson": [
+          "id-DistCPSource2S3"
+        ]
+      },
+      "id-DistCPS32Dest": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 821,
+          "y": 181
+        },
+        "z": 0,
+        "embeds": [],
+        "dependson": [
+          "id-WaitCondition"
+        ]
+      }
+    }
+  },
+  "Resources": {
+    "waithandle": {
+      "Type": "AWS::CloudFormation::WaitConditionHandle",
+      "Properties": {},
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "id-waithandle"
+        }
+      }
+    },
+    "EMRCY325": {
+      "Type": "AWS::EMR::Cluster",
+      "Properties": {
+        "Name": "Recalc_terraform",
+        "ReleaseLabel": "emr-4.7.2",
+        "JobFlowRole": "EMR_EC2_DefaultRole",
+        "ServiceRole": "EMR_DefaultRole",
+        "VisibleToAllUsers": true,
+        "Configurations": [
+          {
+            "Classification": "emrfs-site",
+            "ConfigurationProperties": {
+              "fs.s3.consistent.metadata.tableName": "EmrFSMetadata",
+              "fs.s3.consistent.retryPeriodSeconds": "10",
+              "fs.s3.consistent": "true",
+              "fs.s3.consistent.retryCount": "5"
+            },
+            "Configurations": []
+          },
+          {
+            "ConfigurationProperties": {
+              "spark.executor.cores": "32",
+              "spark.default.parallelism": "50000",
+              "spark.sql.hive.metastore.jars": "/usr/lib/hive/lib/*:$(hadoop classpath)",
+              "spark.executor.extraClassPath": "/usr/lib/hive/lib/guava-11.0.2.jar:/etc/hadoop/conf:/etc/hive/conf:/usr/lib/hadoop-lzo/lib/*:/usr/lib/hadoop/hadoop-aws.jar:/usr/share/aws/aws-java-sdk/*:/usr/share/aws/emr/emrfs/conf:/usr/share/aws/emr/emrfs/lib/*:/usr/share/aws/emr/emrfs/auxlib/*",
+              "spark.driver.memory": "15G",
+              "spark.sql.hive.metastore.version": "1.0",
+              "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+              "spark.driver.extraClassPath": "/usr/lib/hive/lib/guava-11.0.2.jar:/etc/hadoop/conf:/etc/hive/conf:/usr/lib/hadoop-lzo/lib/*:/usr/lib/hadoop/hadoop-aws.jar:/usr/share/aws/aws-java-sdk/*:/usr/share/aws/emr/emrfs/conf:/usr/share/aws/emr/emrfs/lib/*:/usr/share/aws/emr/emrfs/auxlib/*",
+              "spark.executor.memory": "48G",
+              "spark.yarn.executor.memoryOverhead": "3072"
+            },
+            "Classification": "spark-defaults"
+          }
+        ],
+        "Instances": {
+          "MasterInstanceGroup": {
+            "InstanceCount": "1",
+            "InstanceType": "m3.xlarge",
+            "Name": "Master"
+          },
+          "CoreInstanceGroup": {
+            "InstanceCount": "4",
+            "InstanceType": "m3.xlarge",
+            "Name": "Core"
+          },
+          "TerminationProtected": false,
+          "Ec2KeyName": "ivan",
+          "Ec2SubnetId": "subnet-4b721c76",
+          "EmrManagedMasterSecurityGroup": "sg-354ae54d",
+          "EmrManagedSlaveSecurityGroup": "sg-374ae54f",
+          "ServiceAccessSecurityGroup": "sg-284ae550"
+        },
+        "Applications": [
+          {
+            "Name": "Hadoop"
+          },
+          {
+            "Name": "Hive"
+          },
+          {
+            "Name": "Spark"
+          },
+          {
+            "Name": "Ganglia"
+          },
+          {
+            "Name": "Presto-Sandbox"
+          },
+          {
+            "Name": "Zeppelin-Sandbox"
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "id-cluster"
+        }
+      },
+      "DependsOn": [
+        "waithandle"
+      ]
+    },
+    "ExportDataOnSource": {
+      "Type": "AWS::EMR::Step",
+      "Properties": {
+        "ActionOnFailure": "CANCEL_AND_WAIT",
+        "HadoopJarStep": {
+          "Args": [
+            "hive",
+            "-f",
+            "s3://moovcheckout-prod-configs/export-2-cluster.q"
+          ],
+          "Jar": "command-runner.jar",
+          "StepProperties": []
+        },
+        "JobFlowId": "j-L29FUPGYU0FG",
+        "Name": "Export migration data on Source"
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "id-ExportDataOnSource"
+        }
+      },
+      "DependsOn": [
+        "EMRCY325"
+      ]
+    },
+    "DistCPSource2S3": {
+      "Type": "AWS::EMR::Step",
+      "Properties": {
+        "ActionOnFailure": "CANCEL_AND_WAIT",
+        "HadoopJarStep": {
+          "Args": [
+            "hadoop",
+            "distcp",
+            "hdfs:///user/hive/warehouse_migration/*",
+            "s3a://hadoop-warehouse-migration/"
+          ],
+          "Jar": "command-runner.jar",
+          "StepProperties": []
+        },
+        "JobFlowId": "j-L29FUPGYU0FG",
+        "Name": "DistCP migration data from Source Cluster to S3"
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "id-DistCPSource2S3"
+        }
+      },
+      "DependsOn": [
+        "ExportDataOnSource"
+      ]
+    },
+    "WaitCondition": {
+      "Type": "AWS::CloudFormation::WaitCondition",
+      "Properties": {
+        "Handle"  : { "Ref" : "waithandle" },
+        "Timeout" : "300",
+        "Count"   : "0"
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "id-WaitCondition"
+        }
+      },
+      "DependsOn": [
+        "DistCPSource2S3"
+      ]
+    },
+    "DistCPS32Dest": {
+      "Type": "AWS::EMR::Step",
+      "Properties": {
+        "ActionOnFailure": "CANCEL_AND_WAIT",
+        "HadoopJarStep": {
+          "Args": [
+            "hadoop",
+            "distcp",
+            "s3a://hadoop-warehouse-migration/",
+            "hdfs:///user/hive/warehouse_migration/*"
+          ],
+          "Jar": "command-runner.jar",
+          "StepProperties": []
+        },
+        "JobFlowId": {
+          "Ref": "EMRCY325"
+        },
+        "Name": "DistCP migration data from S3 to Destination Cluster"
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "id-DistCPS32Dest"
+        }
+      },
+      "DependsOn": [
+        "WaitCondition"
+      ]
+    }
+    
+  },
+  "Outputs": {
+    "waithandle": {
+      "Value": {
+        "Ref": "waithandle"
+      }
+    },
+    "DestinationClusterID": {
+      "Value": {
+        "Ref": "EMRCY325"
+      }
+    },
+    "STEPExportDataOnSource": {
+      "Value": {
+        "Ref": "ExportDataOnSource"
+      }
+    },
+    "STEPDistCPSource2S3": {
+      "Value": {
+        "Ref": "DistCPSource2S3"
+      }
+    },
+    "WaitCondition": {
+      "Value": {
+        "Ref": "WaitCondition"
+      }
+    },
+    "STEPDistCPS32Dest": {
+      "Value": {
+        "Ref": "DistCPS32Dest"
+      }
+    }
+  }
+}
+STACK
+}
+output "cf_outputs" {
+  value = "${aws_cloudformation_stack.tfEMR.outputs}"
+}

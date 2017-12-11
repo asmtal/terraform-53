@@ -1,0 +1,9 @@
+# This tf module creates new cluster and migrates all data form running cluster to it.
+Pls, use variables.tf files for variables.
+
+
+cd createcluster
+terraform apply
+cd create step
+vim variables
+terraform apply

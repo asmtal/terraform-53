@@ -1,0 +1,246 @@
+# AWS PROVIDERS
+# Default provider (used if provider not specified in resource definition)
+provider "aws" {
+  region = "${var.aws_region}"
+  access_key = "${var.access_key}"
+  secret_key = "${var.secret_key}"
+}
+
+# EMR definition by cloudformation stack
+resource "aws_cloudformation_stack" "tfEMR" {
+  name = "emrmigrationexport"
+  # DO_NOTHING, ROLLBACK, or DELETE
+  # on_failure = "DO_NOTHING"
+  disable_rollback = "true"
+  tags    = { Name= "tfEMRsmall" }
+  timeout_in_minutes = "120"
+  template_body = <<STACK
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Metadata": {
+    "AWS::CloudFormation::Designer": {
+      "id-cluster": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 280,
+          "y": 180
+        },
+        "z": 0,
+        "embeds": []
+      },
+      "id-ExportDataOnSource": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 470,
+          "y": 180
+        },
+        "z": 0,
+        "embeds": [],
+        "dependson": [
+          "id-cluster"
+        ]
+      },
+      "id-DistCPSource2S3": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 650,
+          "y": 180
+        },
+        "z": 0,
+        "embeds": [],
+        "dependson": [
+          "id-ExportDataOnSource"
+        ]
+      }
+    }
+  },
+  "Resources": {
+    "EMRCY325": {
+      "Type": "AWS::EMR::Cluster",
+      "Properties": {
+        "Name": "Recalc_terraform",
+        "ReleaseLabel": "emr-4.7.2",
+        "JobFlowRole": "EMR_EC2_DefaultRole",
+        "ServiceRole": "EMR_DefaultRole",
+        "VisibleToAllUsers": true,
+        "Configurations": [
+          {
+            "Classification": "emrfs-site",
+            "ConfigurationProperties": {
+              "fs.s3.consistent.metadata.tableName": "EmrFSMetadata",
+              "fs.s3.consistent.retryPeriodSeconds": "10",
+              "fs.s3.consistent": "true",
+              "fs.s3.consistent.retryCount": "5"
+            },
+            "Configurations": []
+          },
+          {
+            "ConfigurationProperties": {
+              "spark.executor.cores": "32",
+              "spark.default.parallelism": "50000",
+              "spark.sql.hive.metastore.jars": "/usr/lib/hive/lib/*:$(hadoop classpath)",
+              "spark.executor.extraClassPath": "/usr/lib/hive/lib/guava-11.0.2.jar:/etc/hadoop/conf:/etc/hive/conf:/usr/lib/hadoop-lzo/lib/*:/usr/lib/hadoop/hadoop-aws.jar:/usr/share/aws/aws-java-sdk/*:/usr/share/aws/emr/emrfs/conf:/usr/share/aws/emr/emrfs/lib/*:/usr/share/aws/emr/emrfs/auxlib/*",
+              "spark.driver.memory": "15G",
+              "spark.sql.hive.metastore.version": "1.0",
+              "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+              "spark.driver.extraClassPath": "/usr/lib/hive/lib/guava-11.0.2.jar:/etc/hadoop/conf:/etc/hive/conf:/usr/lib/hadoop-lzo/lib/*:/usr/lib/hadoop/hadoop-aws.jar:/usr/share/aws/aws-java-sdk/*:/usr/share/aws/emr/emrfs/conf:/usr/share/aws/emr/emrfs/lib/*:/usr/share/aws/emr/emrfs/auxlib/*",
+              "spark.executor.memory": "48G",
+              "spark.yarn.executor.memoryOverhead": "3072"
+            },
+            "Classification": "spark-defaults"
+          }
+        ],
+        "Instances": {
+          "MasterInstanceGroup": {
+            "InstanceCount": "1",
+            "InstanceType": "m3.xlarge",
+            "Name": "Master"
+          },
+          "CoreInstanceGroup": {
+            "InstanceCount": "2",
+            "InstanceType": "m3.xlarge",
+            "Name": "Core"
+          },
+          "TerminationProtected": false,
+          "Ec2KeyName": "ivan",
+          "Ec2SubnetId": "subnet-4b721c76",
+          "EmrManagedMasterSecurityGroup": "sg-354ae54d",
+          "EmrManagedSlaveSecurityGroup": "sg-374ae54f",
+          "ServiceAccessSecurityGroup": "sg-284ae550"
+        },
+        "Applications": [
+          {
+            "Name": "Hadoop"
+          },
+          {
+            "Name": "Hive"
+          },
+          {
+            "Name": "Spark"
+          },
+          {
+            "Name": "Ganglia"
+          },
+          {
+            "Name": "Presto-Sandbox"
+          },
+          {
+            "Name": "Zeppelin-Sandbox"
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "id-cluster"
+        }
+      }
+    },
+    "cleanupbeforemigration": {
+      "Type": "AWS::EMR::Step",
+      "Properties": {
+        "ActionOnFailure": "CANCEL_AND_WAIT",
+        "HadoopJarStep": {
+          "Args": [
+            "hadoop",
+            "fs",
+            "-ls",
+            "hdfs:/user/hive/warehouse_migration/"
+          ],
+          "Jar": "command-runner.jar",
+          "StepProperties": []
+        },
+        "JobFlowId": "${var.source_cluster}",
+        "Name": "Cleanup migration path before migration"
+      },
+      "DependsOn": [
+        "EMRCY325"
+      ]
+    },
+    "ExportDataOnSource": {
+      "Type": "AWS::EMR::Step",
+      "Properties": {
+        "ActionOnFailure": "CANCEL_AND_WAIT",
+        "HadoopJarStep": {
+          "Args": [
+            "hive",
+            "-f",
+            "s3://moovcheckout-prod-configs/export-2-cluster.q"
+          ],
+          "Jar": "command-runner.jar",
+          "StepProperties": []
+        },
+        "JobFlowId": "${var.source_cluster}",
+        "Name": "Export migration data on Source"
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "id-ExportDataOnSource"
+        }
+      },
+      "DependsOn": [
+        "cleanupbeforemigration"
+      ]
+    },
+    "DistCPSource2S3": {
+      "Type": "AWS::EMR::Step",
+      "Properties": {
+        "ActionOnFailure": "CANCEL_AND_WAIT",
+        "HadoopJarStep": {
+          "Args": [
+            "hadoop",
+            "distcp",
+            "hdfs:///user/hive/warehouse_migration/*",
+            "s3a://hadoop-warehouse-migration/"
+          ],
+          "Jar": "command-runner.jar",
+          "StepProperties": []
+        },
+        "JobFlowId": "${var.source_cluster}",
+        "Name": "DistCP migration data from Source Cluster to S3"
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "id-DistCPSource2S3"
+        }
+      },
+      "DependsOn": [
+        "ExportDataOnSource"
+      ]
+    }
+  },
+  "Outputs": {
+    "DestinationClusterID": {
+      "Value": {
+        "Ref": "EMRCY325"
+      }
+    },
+    "STEPExportDataOnSource": {
+      "Value": {
+        "Ref": "ExportDataOnSource"
+      }
+    },
+    "STEPDistCPSource2S3": {
+      "Value": {
+        "Ref": "DistCPSource2S3"
+      }
+    }
+  }
+}
+STACK
+provisioner "local-exec" {
+        command = "sleep 300"
+    }
+}
+
+output "cf_outputs" {
+  value = "${aws_cloudformation_stack.tfEMR.outputs}"
+}
